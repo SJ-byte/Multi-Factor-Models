@@ -1,0 +1,142 @@
+# 可以自己import我们平台支持的第三方python模块，比如pandas、numpy等。
+import pandas as pd
+import numpy as np
+import datetime as datetime
+#from datetime import datetime
+global ThisMonth
+global NextMonth
+
+
+def sharp(stock,startdate,enddate):
+    prices = get_price(stock, startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+    for i in list(range(1,len(prices)-1)):
+        returns.set_value(i,(prices[i+1]/prices[i]-1))
+    ave = np.mean(returns)
+    std = np.std(returns)
+    sharpe = (ave/std)*np.sqrt(252)
+    returnv = pd.Series(sharpe,index = [stock])
+    return returnv
+    
+def getreversal(indname,startdate,enddate):
+    allstock = industry(indname)
+    #print(allstock)
+    if len(allstock) > 0:
+        indreturn = getindave(indname,startdate,enddate)
+        tempp = get_price(allstock, startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)
+        if len(tempp) > 0:
+            tempp = get_price(allstock, startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['ClosingPx']
+            ret = tempp.ix[-1,:]/tempp.ix[0,:]
+            retcompare = ret - indreturn-1
+            std = np.std(ret-1)
+            return retcompare/std
+        else:
+            return pd.Series(-1000, index = ['000001.XSHE'])
+    else:
+        return pd.Series(-1000, index = ['000001.XSHE'])
+    
+    
+def getindave(indname,startdate,enddate):
+    allstock = industry(indname)
+    if len(allstock) > 0:
+        tempp = get_price(allstock, startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)
+        if len(tempp) > 0:
+            tempp = get_price(allstock, startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['ClosingPx']
+            ret = tempp.ix[-1,:]/tempp.ix[0,:]
+            #print(np.mean(ret)-1)
+            return np.mean(ret)-1
+        else:
+            return 1
+    else:
+        return 1
+
+def Select(context, bar_dict,startdate,enddate):
+    allind = ['A01','A02','A03','A04','A05','B06','B07','B08','B09','B10','B11','B12','C13','C14','C15','C16','C17','C18','C19','C20','C21','C22','C23','C24','C25','C26','C27','C28','C29','C30','C31','C32','C33','C34','C35','C36','C37','C38','C39','C40','C41','C42','C43','D44','D45','D46','E47','E48','E49','E50','F51','F52','G53','G54','G55','G56','G57','G58','G59','G60','H61','H62','I63','I64','I65','J66','J67','J68','J69','K70','L71','L72','M73','M74','M75','N76','N77','N78','O79','O80','O81','P82','Q83','Q84','R85','R86','R87','R88','R89']
+    # 实时打印日志
+    StockTotal = pd.Series(0)
+    for ind in allind:
+        stocks = industry(ind)
+        #print(ind,startdate,enddate)
+        StocksResult = getreversal(ind,startdate,enddate)
+        StockTotal = StockTotal.append(StocksResult)
+        #print(StockTotal[0:5])
+    StockTotal = StockTotal.dropna()
+    #StockTotal[StockTotal.index.values == '000001.XSHE']
+    StockTotal = StockTotal.order(ascending=False)
+    SelectedStocks = StockTotal.index.values[0:100]
+    context.Stocks = SelectedStocks
+    #logger.info("Interested at stock: " + str(context.Stocks))
+    #update_universe(context.Stocks)
+
+#Pleaseb be noted that we can not use some functions of bar_dict in before trading part, as some information are unknown at this time
+def stoploss(context,bar_dict):
+    for stock in context.Stocks:
+        #print(stock)
+        #print(bar_dict[stock].total_turnover)
+        if bar_dict[stock].last<context.portfolio.positions[stock].average_cost*context.stoplossmultipler:# 现价低于 原价一定比例
+            order_target_percent(stock,0)
+            print(str(stock)+'跌幅超过'+str((1-context.stoplossmultipler)*100) +'%  触发止损')
+        elif bar_dict[stock].last>context.portfolio.positions[stock].average_cost*context.stoppofitmultipler:# 现价高于原价一定比例
+            order_target_percent(stock,0)
+            print(str(stock)+'涨幅幅超过'+str((context.stoppofitmultipler-1)*100) +'%  触发止盈')
+    pass 
+    
+# 在这个方法中编写任何的初始化逻辑。context对象将会在你的算法策略的任何方法之间做传递。
+def init(context):
+    context.Stocks = '000300.XSHG'
+    context.stoplossmultipler= 0.9 #止损 乘数 
+    context.stoppofitmultipler= 10.8 #止盈 乘数
+    context.countdate = 0
+    context.Traded = 0
+    #scheduler.run_monthly(Select, tradingday=1)
+    
+
+# before_trading此函数会在每天交易开始前被调用，当天只会被调用一次
+def before_trading(context, bar_dict):
+    #print("{:%Y-%m-%d}".format(context.now + datetime.timedelta(days=1)))
+    #print(context.now.month)
+    #print((context.now + datetime.timedelta(days=1)).month)
+    context.countdate = context.countdate + 1
+
+    if context.countdate%20 == 0:
+        enddate = "{:%Y-%m-%d}".format(get_previous_trading_date(context.now))
+        startdate = "{:%Y-%m-%d}".format(context.now - datetime.timedelta(days=28))
+        #print(startdate)
+        #print(enddate)
+        Select(context, bar_dict,startdate,enddate)
+        pb_ratio_df = get_fundamentals(
+            query(
+                fundamentals.eod_derivative_indicator.pb_ratio
+            ).filter(
+                fundamentals.eod_derivative_indicator.stockcode.in_(context.Stocks)
+            ).order_by(
+                fundamentals.eod_derivative_indicator.pb_ratio.asc()
+            ).limit(
+                    10
+            )
+        )
+        print(pb_ratio_df)
+        context.Stocks = pb_ratio_df.columns.values[0:10]
+        update_universe(context.Stocks)
+        
+
+# 你选择的证券的数据更新将会触发此段逻辑，例如日或分钟历史数据切片或者是实时数据切片更新
+def handle_bar(context, bar_dict):
+    # 开始编写你的主要的算法逻辑
+
+   # bar_dict[order_book_id] 可以拿到某个证券的bar信息
+    # context.portfolio 可以拿到现在的投资组合状态信息
+    # 使用order_shares(id_or_ins, amount)方法进行落单
+    # TODO: 开始编写你的算法吧！
+    if context.Traded == 1:
+        stoploss(context,bar_dict)
+    if context.countdate%20 == 0:
+        context.average_percent = 0.99/len(context.Stocks)
+        print(context.Stocks[0:5])
+        for stock in context.Stocks:
+            order_target_percent(stock, context.average_percent)
+        context.Traded = 1
+            #logger.info("Bought: " + str(context.average_percent) + " % for stock: " + str(stock))
+            #context.fired = True
+    
+    
+    
