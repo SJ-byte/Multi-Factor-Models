@@ -1,0 +1,81 @@
+# 可以自己import我们平台支持的第三方python模块，比如pandas、numpy等。
+import pandas as pd
+import talib
+
+# 在这个方法中编写任何的初始化逻辑。context对象将会在你的算法策略的任何方法之间做传递。
+def init(context):
+    context.benchmark = '000300.XSHG'
+    context.short_selling_allowed = True
+    context.position_limit  = 0.7
+    context.position_num = 20
+    
+    scheduler.run_monthly(choose_stocks, monthday=1)
+    scheduler.run_monthly(adjust_positions, monthday=1)
+    scheduler.run_weekly(adjust_future, weekday=1)
+    
+    update_universe([context.benchmark])
+    
+def adjust_future(context, bar_dict):
+    portfolio_value = context.portfolio.portfolio_value* context.position_limit 
+    order_target_value("510300.XSHG", -(portfolio_value))
+    
+def choose_stocks(context,bar_dict):
+    
+    fundamental_df = get_fundamentals(
+        query(
+            fundamentals.eod_derivative_indicator.market_cap, 
+            fundamentals.financial_indicator.inc_revenue,
+            fundamentals.financial_indicator.inc_earnings_per_share,
+            fundamentals.eod_derivative_indicator.pe_ratio
+        ).filter(
+            fundamentals.income_statement.stockcode.in_(index_components('000300.XSHG'))
+        ).filter(
+            fundamentals.eod_derivative_indicator.pe_ratio>0
+        ).filter(
+            fundamentals.eod_derivative_indicator.pb_ratio>0
+        ).order_by(
+            fundamentals.eod_derivative_indicator.market_cap.asc()
+        ).limit(
+            60
+        )
+    )
+    fundamental_df_T = fundamental_df.T 
+    
+    market_cap_rank = fundamental_df_T.market_cap.rank()
+    inc_earnings_per_share_rank=fundamental_df_T.inc_earnings_per_share.rank(ascending=False)
+    inc_revenue_rank = fundamental_df_T.inc_revenue.rank(ascending=False)
+    pe_ratio_rank = fundamental_df_T.pe_ratio.rank()
+    
+    trading_stocks = get_trading_stocks(fundamental_df.columns.values, bar_dict)
+
+    stock_score_dict = {}
+    for stock_code in trading_stocks :
+        stock_score_dict[stock_code] = market_cap_rank[stock_code]  + pe_ratio_rank[stock_code] + inc_revenue_rank[stock_code] + inc_earnings_per_share_rank[stock_code]
+        
+    stock_score_s =  pd.Series(stock_score_dict,name = 'scores')
+    stock_score_s.sort(ascending=True)
+    context.stocks = stock_score_s.index[0:context.position_num].values
+
+    update_universe(context.stocks)
+
+def get_trading_stocks(raw_stocks, bar_dict):
+    trading_stocks = []
+    for stock in raw_stocks:
+        if bar_dict[stock].is_trading:
+            trading_stocks.append(stock)
+    return trading_stocks
+    
+def adjust_positions(context, bar_dict):
+
+    for last_stock in context.portfolio.positions:
+        if bar_dict[last_stock].is_trading:
+            order_target_percent(last_stock,0)
+    
+    to_buy_stocks = context.stocks
+    avail_cash = context.portfolio.cash*context.position_limit
+    each_cash = avail_cash/len(to_buy_stocks)
+    logger.info("avail cash is %f, stock num is %d, each stock cash is %f.",avail_cash,len(to_buy_stocks),each_cash )
+    for current_stock in to_buy_stocks:
+        order_target_value(current_stock, each_cash)    
+    portfolio_value = context.portfolio.portfolio_value* context.position_limit 
+    order_target_value("510300.XSHG", -(portfolio_value))
