@@ -319,3 +319,222 @@ def FactorPlot(start,end,interval,period):
 
 
 FactorPlot(start,end,interval,period)
+
+
+############################################
+import math
+import numpy as np
+import pandas as pd
+import datetime as datetime
+import talib
+import matplotlib.pyplot as plt
+from scipy.stats import ttest_ind
+from scipy.stats import levene
+
+#Use this function to find all indices of a certain value
+def all_indices(value, qlist):
+    indices = []
+    idx = -1
+    while True:
+        try:
+            idx = qlist.index(value, idx+1)
+            indices.append(idx)
+        except ValueError:
+            break
+    return indices
+
+period = 20 #统计间隔，统计这么长时间段内的收益
+num = 20 #股票数量
+start = '2010-01-01' #起始和终止时间
+end = '2013-12-31'
+start = datetime.datetime.strptime(start,'%Y-%m-%d')
+end = datetime.datetime.strptime(end,'%Y-%m-%d')
+def GetFactorResult(period,num,start,end):
+    #print(start)
+    #print(end)
+    fundamental_df = get_fundamentals(
+            query(
+                fundamentals.eod_derivative_indicator.pcf_ratio
+            ), start)
+    #fundamental_df
+    a = fundamental_df.pcf_ratio.T.dropna()
+    a1 = a.sort(columns = a.columns.values[0])
+    a2 = a.sort(columns = a.columns.values[0],ascending=False)
+    a_low = a1[0:num]
+    a_high = a2[0:num]
+    low = a_low.T.columns.values
+    high = a_high.T.columns.values
+    low_price = get_price(list(low), start_date=start, end_date=end)['ClosingPx']
+    high_price = get_price(list(high), start_date=start, end_date=end)['ClosingPx']
+    low_series = low_price.T.mean()
+    low_series = low_series / low_series[0]
+    high_series = high_price.T.mean()
+    high_series = high_series / high_series[0]
+    low_series = low_series.reset_index(drop=True)
+    high_series = high_series.reset_index(drop=True)
+    returnv = pd.concat([low_series, high_series], axis=1)
+    return returnv
+    #plt.plot(high_series.index,high_series,'b',label = 'Higher Quantile')
+    #plt.plot(low_series.index,low_series,'r',label = 'Lower Quantile')
+    #plt.legend(loc='upper left')
+    #plt.title("Factor Performance")
+    #plt.xlabel("Time")
+    #plt.ylabel("Return")    
+    #low_series_cge = low_series.pct_change(period).dropna()
+    #high_series_cge = high_series.pct_change(period).dropna()
+
+#Here in this function, the interval means how long do we rebalance the portfolio
+def FactorPlot(start,end,interval,period):
+    totaldays = (end - start).days
+    totalinter = math.floor((end - start).days/interval)
+    for i in list(range(1,totalinter+1)):
+        start = start + datetime.timedelta(days=interval) - datetime.timedelta(days=(i==1)*interval)
+        end = start + datetime.timedelta(days=interval)
+        if i == 1:
+            totalresult = GetFactorResult(period,num,start,end)
+        else:
+            totalresult = totalresult.append(GetFactorResult(period,num,start,end))
+    flag = 0
+    for i in list(range(1,np.shape(totalresult)[0])):  #Don't interate the first row
+        #print(i)
+        if flag == 1:
+            break
+        else:
+            if totalresult.index.values[i] == 0:
+                totalresult.iloc[i] = totalresult.iloc[i-1]
+                for j in list(range(1,30)):                    
+                    if (i+j) > np.shape(totalresult)[0]-1: #If i=j can not be reached
+                        flag = 1
+                        break
+                    else:
+                        if (totalresult.index.values[i+j] == 0):
+                            break
+                        else:
+                            #print(list(totalresult.iloc[i+j]),list(totalresult.iloc[i+j-1]))
+                            totalresult.iloc[i+j] = totalresult.iloc[i+j] * totalresult.iloc[i]
+                            #print(j)
+            else:
+                continue
+    #print(len(list(range(0,np.shape(totalresult)[0]))),len(totalresult[0]))
+    #print(len(list(range(0,np.shape(totalresult)[0]))),len(totalresult[1]))
+    plt.plot(list(range(0,np.shape(totalresult)[0])),totalresult[0],'b',label = 'Lower Quantile')
+    plt.plot(list(range(0,np.shape(totalresult)[0])),totalresult[1],'r',label = 'Higher Quantile')
+    plt.legend(loc='upper left')
+    plt.title("Factor Performance")
+    plt.xlabel("Time")
+    plt.ylabel("Return")    
+    low_series_cge = totalresult[0].dropna()
+    high_series_cge = totalresult[1].dropna()
+    return ttest_ind(high_series_cge,low_series_cge,equal_var=False).pvalue
+
+FactorPlot(start,end,interval,period)
+
+#####################################################
+import math
+import numpy as np
+import pandas as pd
+import datetime as datetime
+import talib
+import matplotlib.pyplot as plt
+from scipy.stats import ttest_ind
+from scipy.stats import levene
+
+#Use this function to find all indices of a certain value
+def all_indices(value, qlist):
+    indices = []
+    idx = -1
+    while True:
+        try:
+            idx = qlist.index(value, idx+1)
+            indices.append(idx)
+        except ValueError:
+            break
+    return indices
+
+period = 20 #统计间隔，统计这么长时间段内的收益
+num = 20 #股票数量
+start = '2010-01-01' #起始和终止时间
+end = '2013-12-31'
+start = datetime.datetime.strptime(start,'%Y-%m-%d')
+end = datetime.datetime.strptime(end,'%Y-%m-%d')
+def GetFactorResult(period,num,start,end):
+    #print(start)
+    #print(end)
+    fundamental_df = get_fundamentals(
+            query(
+                fundamentals.financial_indicator.earnings_per_share
+            ), start)
+    #fundamental_df
+    a = fundamental_df.earnings_per_share.T.dropna()
+    a1 = a.sort(columns = a.columns.values[0])
+    a2 = a.sort(columns = a.columns.values[0],ascending=False)
+    a_low = a1[0:num]
+    a_high = a2[0:num]
+    low = a_low.T.columns.values
+    high = a_high.T.columns.values
+    low_price = get_price(list(low), start_date=start, end_date=end)['ClosingPx']
+    high_price = get_price(list(high), start_date=start, end_date=end)['ClosingPx']
+    low_series = low_price.T.mean()
+    low_series = low_series / low_series[0]
+    high_series = high_price.T.mean()
+    high_series = high_series / high_series[0]
+    low_series = low_series.reset_index(drop=True)
+    high_series = high_series.reset_index(drop=True)
+    returnv = pd.concat([low_series, high_series], axis=1)
+    return returnv
+    #plt.plot(high_series.index,high_series,'b',label = 'Higher Quantile')
+    #plt.plot(low_series.index,low_series,'r',label = 'Lower Quantile')
+    #plt.legend(loc='upper left')
+    #plt.title("Factor Performance")
+    #plt.xlabel("Time")
+    #plt.ylabel("Return")    
+    #low_series_cge = low_series.pct_change(period).dropna()
+    #high_series_cge = high_series.pct_change(period).dropna()
+
+#Here in this function, the interval means how long do we rebalance the portfolio
+def FactorPlot(start,end,interval,period):
+    totaldays = (end - start).days
+    totalinter = math.floor((end - start).days/interval)
+    for i in list(range(1,totalinter+1)):
+        start = start + datetime.timedelta(days=interval) - datetime.timedelta(days=(i==1)*interval)
+        end = start + datetime.timedelta(days=interval)
+        if i == 1:
+            totalresult = GetFactorResult(period,num,start,end)
+        else:
+            totalresult = totalresult.append(GetFactorResult(period,num,start,end))
+    flag = 0
+    for i in list(range(1,np.shape(totalresult)[0])):  #Don't interate the first row
+        #print(i)
+        if flag == 1:
+            break
+        else:
+            if totalresult.index.values[i] == 0:
+                totalresult.iloc[i] = totalresult.iloc[i-1]
+                for j in list(range(1,30)):                    
+                    if (i+j) > np.shape(totalresult)[0]-1: #If i=j can not be reached
+                        flag = 1
+                        break
+                    else:
+                        if (totalresult.index.values[i+j] == 0):
+                            break
+                        else:
+                            #print(list(totalresult.iloc[i+j]),list(totalresult.iloc[i+j-1]))
+                            totalresult.iloc[i+j] = totalresult.iloc[i+j] * totalresult.iloc[i]
+                            #print(j)
+            else:
+                continue
+    #print(len(list(range(0,np.shape(totalresult)[0]))),len(totalresult[0]))
+    #print(len(list(range(0,np.shape(totalresult)[0]))),len(totalresult[1]))
+    plt.plot(list(range(0,np.shape(totalresult)[0])),totalresult[0],'b',label = 'Lower Quantile')
+    plt.plot(list(range(0,np.shape(totalresult)[0])),totalresult[1],'r',label = 'Higher Quantile')
+    plt.legend(loc='upper left')
+    plt.title("Factor Performance")
+    plt.xlabel("Time")
+    plt.ylabel("Return")    
+    low_series_cge = totalresult[0].dropna()
+    high_series_cge = totalresult[1].dropna()
+    return ttest_ind(high_series_cge,low_series_cge,equal_var=False).pvalue
+
+FactorPlot(start,end,interval,period)
+
+########################################################
