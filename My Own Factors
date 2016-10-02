@@ -1,5 +1,6 @@
-######################################################
-import math
+############################################################################################################
+#Best 1 year sharpe factor
+############################################################################################################import math
 import numpy as np
 import pandas as pd
 import datetime as datetime
@@ -9,7 +10,7 @@ from scipy.stats import ttest_ind
 from scipy.stats import levene
 
 AllStocks = all_instruments(type='CS', country='cn')['order_book_id']
-start = '2010-01-01' #起始和终止时间
+start = '2012-01-01' #起始和终止时间
 end = '2013-12-31'
 start = datetime.datetime.strptime(start,'%Y-%m-%d')
 end = datetime.datetime.strptime(end,'%Y-%m-%d')
@@ -19,10 +20,12 @@ num = 100
 startdate1 = '2014-01-01'
 enddate1 = '2016-06-01'
 stock = AllStocks
-interval = 20
+interval = 365
+holding = 30
 
-def sharpe(stock,startdate,enddate,num):
-    #print(stock)
+def sharpe(stock,startdate,enddate,num,interval,holding):
+    #print("This is the Beginning of Sharpe Calculation")
+    #print(startdate,enddate)
     if len(stock) != 0 :
         prices = get_price(list(stock), startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
         #print(stock,startdate,enddate)
@@ -51,6 +54,10 @@ def sharpe(stock,startdate,enddate,num):
         a_high = a2[0:num]
         low = a_low.index.values
         high = a_high.index.values
+        startdate = enddate
+        enddate = enddate + datetime.timedelta(days=holding)
+        #print("This is the Beginning of Return Calculation")
+        #print(startdate,enddate)
         low_price = get_price(list(low), start_date=startdate, end_date=enddate)['ClosingPx']
         high_price = get_price(list(high), start_date=startdate, end_date=enddate)['ClosingPx']
         low_series = low_price.T.mean()
@@ -63,16 +70,16 @@ def sharpe(stock,startdate,enddate,num):
 
     
 #We need to change the name of the funcation here to get the performance of our model
-def MyFactorPlot(start,end,interval):
+def MyFactorPlot(start,end,interval,holding):
     totaldays = (end - start).days
-    totalinter = math.floor((end - start).days/interval)
+    totalinter = math.floor((end - start).days/holding)  #How many interations do we need?
     for i in list(range(1,totalinter+1)):
-        start = start + datetime.timedelta(days=interval) - datetime.timedelta(days=(i==1)*interval)
+        start = start + datetime.timedelta(days=holding) - datetime.timedelta(days=(i==1)*holding)
         end = start + datetime.timedelta(days=interval)
         if i == 1:
-            totalresult = sharpe(AllStocks,start,end,num)
+            totalresult = sharpe(AllStocks,start,end,num,interval,holding)
         else:
-            totalresult = totalresult.append(sharpe(AllStocks,start,end,num))
+            totalresult = totalresult.append(sharpe(AllStocks,start,end,num,interval,holding))
     flag = 0
     for i in list(range(1,np.shape(totalresult)[0])):  #Don't interate the first row
         #print(i)
@@ -106,10 +113,11 @@ def MyFactorPlot(start,end,interval):
     high_series_cge = totalresult[1].dropna()
     return ttest_ind(high_series_cge,low_series_cge,equal_var=False).pvalue
 
-MyFactorPlot(start,end,20)
+MyFactorPlot(start,end,interval,holding)
 
-
-###########################################################################################################################
+############################################################################################################
+#Industry's best factor
+############################################################################################################
 AllStocks = all_instruments(type='CS', country='cn')['order_book_id']
 start = '2013-01-01' #起始和终止时间
 end = '2013-12-31'
@@ -207,24 +215,40 @@ def PerformanceIndustry(indicators,stock,startdate1,enddate1,num):
 indusind = IndustrySelect(startdate,enddate)
 PerformanceIndustry(indusind,stock,startdate1,enddate1,num)
 
-###############################################
+############################################################################################################
 #Closing Price to 260 Day Low
+############################################################################################################
+import math
+import numpy as np
+import pandas as pd
+import datetime as datetime
+import talib
+import matplotlib.pyplot as plt
+from scipy.stats import ttest_ind
+from scipy.stats import levene
+
 AllStocks = all_instruments(type='CS', country='cn')['order_book_id']
-start = '2013-01-01' #This is the start and end date for indiator selection period
+start = '2012-01-01' #起始和终止时间
 end = '2013-12-31'
+start = datetime.datetime.strptime(start,'%Y-%m-%d')
+end = datetime.datetime.strptime(end,'%Y-%m-%d')
 startdate = start
 enddate = end
 num = 100
 startdate1 = '2014-01-01'
 enddate1 = '2016-06-01'
 stock = AllStocks
+interval = 365
+holding = 30
 
-def ClosingPrice(stock,startdate,enddate):
-    #print(stock)
+def sharpe(stock,startdate,enddate,num,interval,holding):
+    #print("This is the Beginning of Sharpe Calculation")
+    #print(startdate,enddate)
     if len(stock) != 0 :
         prices = get_price(list(stock), startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
-    #print(stock,startdate,enddate)
+        #print(stock,startdate,enddate)
         #print(prices.iloc[0:5])
+        #print(len(prices))
         returns = pd.DataFrame(columns=(stock))
         ave = pd.Series(index=(stock))
         std = pd.Series(index=(stock))
@@ -238,41 +262,73 @@ def ClosingPrice(stock,startdate,enddate):
             ave.iloc[i-1] = np.mean(returns[stock[i-1]])
             std.iloc[i-1] = np.std(returns[stock[i-1]])
         sharpe = (ave/std)*np.sqrt(252)
-        return sharpe
-    else:
-        return pd.Series(-1000, index = ['000001.XSHE'])
+        a = pd.Series(sharpe, index = [stock])
+        a = a.dropna()
+        a.sort()
+        a1 = a[0:num]
+        a.sort(ascending=False)
+        a2 = a[0:num]
+        a_low = a1[0:num]
+        a_high = a2[0:num]
+        low = a_low.index.values
+        high = a_high.index.values
+        startdate = enddate
+        enddate = enddate + datetime.timedelta(days=holding)
+        #print("This is the Beginning of Return Calculation")
+        #print(startdate,enddate)
+        low_price = get_price(list(low), start_date=startdate, end_date=enddate)['ClosingPx']
+        high_price = get_price(list(high), start_date=startdate, end_date=enddate)['ClosingPx']
+        low_series = low_price.T.mean()
+        low_series = low_series / low_series[0]
+        high_series = high_price.T.mean()
+        high_series = high_series / high_series[0]
+        returnv = pd.concat([low_series, high_series], axis=1)
+        #print(len(high_series))
+        return returnv.reset_index(drop=True)
+
     
-#For the input of Performance Function, we require the indicator should have the same length as stock, 
-#I will reindex it in the function
-def Performance(indicators,stock,startdate1,enddate1,num):
-    if (len(indicators)!=len(stock)):
-        return 'ERROR'
-    a = pd.Series(te, index = [stock])
-    a = a.dropna()
-    a.sort()
-    a1 = a[0:num]
-    a.sort(ascending=False)
-    a2 = a[0:num]
-    a_low = a1[0:num]
-    a_high = a2[0:num]
-    low = a_low.index.values
-    high = a_high.index.values
-    low_price = get_price(list(low), start_date=startdate1, end_date=enddate1)['ClosingPx']
-    high_price = get_price(list(high), start_date=startdate1, end_date=enddate1)['ClosingPx']
-    low_series = low_price.T.mean()
-    low_series = low_series / low_series[0]
-    high_series = high_price.T.mean()
-    high_series = high_series / high_series[0]
-    plt.plot(high_series.index,high_series,'b',label = 'Higher Quantile')
-    plt.plot(low_series.index,low_series,'r',label = 'Lower Quantile')
+#We need to change the name of the funcation here to get the performance of our model
+def MyFactorPlot(start,end,interval,holding):
+    totaldays = (end - start).days
+    totalinter = math.floor((end - start).days/holding)  #How many interations do we need?
+    for i in list(range(1,totalinter+1)):
+        start = start + datetime.timedelta(days=holding) - datetime.timedelta(days=(i==1)*holding)
+        end = start + datetime.timedelta(days=interval)
+        if i == 1:
+            totalresult = sharpe(AllStocks,start,end,num,interval,holding)
+        else:
+            totalresult = totalresult.append(sharpe(AllStocks,start,end,num,interval,holding))
+    flag = 0
+    for i in list(range(1,np.shape(totalresult)[0])):  #Don't interate the first row
+        #print(i)
+        if flag == 1:
+            break
+        else:
+            if totalresult.index.values[i] == 0:
+                totalresult.iloc[i] = totalresult.iloc[i-1]
+                for j in list(range(1,30)):                    
+                    if (i+j) > np.shape(totalresult)[0]-1: #If i=j can not be reached
+                        flag = 1
+                        break
+                    else:
+                        if (totalresult.index.values[i+j] == 0):
+                            break
+                        else:
+                            #print(list(totalresult.iloc[i+j]),list(totalresult.iloc[i+j-1]))
+                            totalresult.iloc[i+j] = totalresult.iloc[i+j] * totalresult.iloc[i]
+                            #print(j)
+            else:
+                continue
+    #print(len(list(range(0,np.shape(totalresult)[0]))),len(totalresult[0]))
+    #print(len(list(range(0,np.shape(totalresult)[0]))),len(totalresult[1]))
+    plt.plot(list(range(0,np.shape(totalresult)[0])),totalresult[0],'b',label = 'Lower Quantile')
+    plt.plot(list(range(0,np.shape(totalresult)[0])),totalresult[1],'r',label = 'Higher Quantile')
     plt.legend(loc='upper left')
     plt.title("Factor Performance")
     plt.xlabel("Time")
-    plt.ylabel("Return")
-    low_series_cge = low_series.pct_change(period).dropna()
-    high_series_cge = high_series.pct_change(period).dropna()
+    plt.ylabel("Return")    
+    low_series_cge = totalresult[0].dropna()
+    high_series_cge = totalresult[1].dropna()
     return ttest_ind(high_series_cge,low_series_cge,equal_var=False).pvalue
-    
-    
-te = sharpe(AllStocks,startdate,enddate)
-Performance(te,stock,startdate1,enddate1,num)
+
+MyFactorPlot(start,end,interval,holding)
