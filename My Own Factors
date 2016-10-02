@@ -241,28 +241,20 @@ stock = AllStocks
 interval = 365
 holding = 30
 
-def sharpe(stock,startdate,enddate,num,interval,holding):
+def CompareToLowest(stock,startdate,enddate,num,interval,holding):
     #print("This is the Beginning of Sharpe Calculation")
     #print(startdate,enddate)
     if len(stock) != 0 :
-        prices = get_price(list(stock), startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+        prices = get_price(list(stock), startdate, end_date=startdate + datetime.timedelta(days=260), frequency='1d', fields=None, adjusted=True)['OpeningPx']
         #print(stock,startdate,enddate)
         #print(prices.iloc[0:5])
         #print(len(prices))
-        returns = pd.DataFrame(columns=(stock))
-        ave = pd.Series(index=(stock))
-        std = pd.Series(index=(stock))
-        for i in list(range(1,np.shape(prices)[0]-1)):
-            #print(i)
-            returns.loc[i-1] = ((prices.iloc[i]/prices.iloc[i-1]-1))
-            #Here by using .olc we defined the index value of the dataframe returns
-        #print(returns[0:10])
-        for i in list(range(1,len(stock))):
-            #print(i)
-            ave.iloc[i-1] = np.mean(returns[stock[i-1]])
-            std.iloc[i-1] = np.std(returns[stock[i-1]])
-        sharpe = (ave/std)*np.sqrt(252)
-        a = pd.Series(sharpe, index = [stock])
+        LowPrice = pd.Series(index=(stock))
+        Ratio = pd.Series(index=(stock))
+        LowPrice = prices.min()
+        NowPrice = prices.iloc[-1]
+        Ratio = NowPrice/LowPrice
+        a = pd.Series(Ratio, index = [stock])
         a = a.dropna()
         a.sort()
         a1 = a[0:num]
@@ -295,9 +287,9 @@ def MyFactorPlot(start,end,interval,holding):
         start = start + datetime.timedelta(days=holding) - datetime.timedelta(days=(i==1)*holding)
         end = start + datetime.timedelta(days=interval)
         if i == 1:
-            totalresult = sharpe(AllStocks,start,end,num,interval,holding)
+            totalresult = CompareToLowest(AllStocks,start,end,num,interval,holding)
         else:
-            totalresult = totalresult.append(sharpe(AllStocks,start,end,num,interval,holding))
+            totalresult = totalresult.append(CompareToLowest(AllStocks,start,end,num,interval,holding))
     flag = 0
     for i in list(range(1,np.shape(totalresult)[0])):  #Don't interate the first row
         #print(i)
