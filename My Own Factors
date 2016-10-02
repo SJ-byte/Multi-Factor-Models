@@ -70,7 +70,7 @@ def sharpe(stock,startdate,enddate,num,interval,holding):
 
     
 #We need to change the name of the funcation here to get the performance of our model
-def MyFactorPlot(start,end,interval,holding):
+def MyFactorPlot(AllStocks,start,end,num,interval,holding):
     totaldays = (end - start).days
     totalinter = math.floor((end - start).days/holding)  #How many interations do we need?
     for i in list(range(1,totalinter+1)):
@@ -113,7 +113,7 @@ def MyFactorPlot(start,end,interval,holding):
     high_series_cge = totalresult[1].dropna()
     return ttest_ind(high_series_cge,low_series_cge,equal_var=False).pvalue
 
-MyFactorPlot(start,end,interval,holding)
+MyFactorPlot(AllStocks,start,end,num,interval,holding)
 
 ############################################################################################################
 #Industry's best factor
@@ -215,7 +215,7 @@ def IndustrySelect(startdate,enddate,num,holding):
 
     
 #We need to change the name of the funcation here to get the performance of our model
-def MyFactorPlot(start,end,interval,holding):
+def MyFactorPlot(start,end,num,interval,holding):
     totaldays = (end - start).days
     totalinter = math.floor((end - start).days/holding)  #How many interations do we need?
     for i in list(range(1,totalinter+1)):
@@ -258,7 +258,7 @@ def MyFactorPlot(start,end,interval,holding):
     high_series_cge = totalresult[1].dropna()
     return ttest_ind(high_series_cge,low_series_cge,equal_var=False).pvalue
 
-MyFactorPlot(start,end,interval,holding)
+MyFactorPlot(start,end,num,interval,holding)
 
 ############################################################################################################
 #Closing Price to 260 Day Low
@@ -325,7 +325,7 @@ def CompareToLowest(stock,startdate,enddate,num,interval,holding):
 
     
 #We need to change the name of the funcation here to get the performance of our model
-def MyFactorPlot(start,end,interval,holding):
+def MyFactorPlot(AllStocks,start,end,num,interval,holding):
     totaldays = (end - start).days
     totalinter = math.floor((end - start).days/holding)  #How many interations do we need?
     for i in list(range(1,totalinter+1)):
@@ -368,4 +368,4 @@ def MyFactorPlot(start,end,interval,holding):
     high_series_cge = totalresult[1].dropna()
     return ttest_ind(high_series_cge,low_series_cge,equal_var=False).pvalue
 
-MyFactorPlot(start,end,interval,holding)
+MyFactorPlot(AllStocks,start,end,num,interval,holding)
