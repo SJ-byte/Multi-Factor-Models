@@ -1,0 +1,113 @@
+import numpy as np
+import pandas as pd
+from sklearn import linear_model
+startdate2='2013-12-01'
+startdate='2014-01-01'
+enddate='2016-05-31'
+enddate2='2016-06-30'
+temp_tradeday=pd.DataFrame(get_price('000905.XSHG',start_date=startdate2,end_date=enddate2,fields='ClosingPx'))
+#tradedays=temp_tradeday.index
+temp_tradeday['yearmonth']=temp_tradeday.index.month+temp_tradeday.index.year*100
+date_month=temp_tradeday.groupby('yearmonth').tail(1).index
+#tradedays=temp_tradeday.index
+
+#residual=pd.DataFrame()
+beta=pd.DataFrame()
+#alpha=pd.DataFrame()
+res_std=pd.DataFrame()
+r_square=pd.DataFrame()
+
+for i in date_month[1:len(date_month)-1]:
+    list_stocks=index_components('000905.XSHG', date=i.strftime("%Y-%m-%d"))
+    loc=np.argmax(np.array(date_month==i)+0)
+    m=get_price(list_stocks,start_date=date_month[loc-1].strftime("%Y-%m-%d"),end_date=i.strftime("%Y-%m-%d"),fields='ClosingPx').pct_change().dropna(axis=0,how='all')
+    index_ret=get_price('000905.XSHG',start_date=date_month[loc-1].strftime("%Y-%m-%d"),end_date=i.strftime("%Y-%m-%d"),).pct_change().dropna(axis=0,how='all')['ClosingPx'].values
+    #r_mean=pd.DataFrame()
+    b=pd.DataFrame()
+    #a=pd.DataFrame()
+    r_s=pd.DataFrame()
+    r_std=pd.DataFrame()
+    num=pd.DataFrame((m==0).sum())<3
+    for j in m.columns: 
+        if int(num.ix[j])==1 and np.sum(np.isnan(m[j].values))==0:
+            regr = linear_model.LinearRegression(fit_intercept=True)
+            x=index_ret.reshape(len(index_ret),1)
+            y=m[j].values.reshape(len(index_ret),1)
+            #print(len(x))
+            regr.fit(x, y)
+            res=y-regr.coef_[0][0]*x-regr.intercept_[0]#残差
+            r_std[j]=np.array([np.std(res)])#特质波动率
+            #r_mean[j]=np.array([np.mean(res)])#残差的均值
+            #logger.info(regr.score(x,y))
+            r_s[j]=np.array([regr.score(x,y)])#R方
+            #a[j]=regr.intercept_#截距项
+            b[j]=regr.coef_[0]#beta
+        else:
+            #r_mean[j]=np.array([np.nan])
+            b[j]=np.array([np.nan])
+            #a[j]=np.array([np.nan])
+            r_s[j]=np.array([np.nan])
+            r_std[j]=np.array([np.nan])
+        #print(regr.coef_[0][0])
+    #alpha=alpha.append(a)
+    beta=beta.append(b)
+    #residual=residual.append(r_mean)
+    res_std=res_std.append(r_std)
+    r_square=r_square.append(r_s)
+    
+    
+prc=pd.DataFrame(get_price(list(beta.columns),start_date=startdate,end_date=enddate2,fields='ClosingPx'))
+prc['yearmonth']=prc.index.month+prc.index.year*100
+ret=prc.groupby('yearmonth').tail(1).pct_change().dropna(axis=0,how='all')
+del ret['yearmonth']
+#alpha.index=ret.index
+beta.index=ret.index
+#residual.index=ret.index
+res_std.index=ret.index
+r_square.index=ret.index
+
+def groupret(df,ret):#分组，计算xia
+    res=pd.DataFrame()
+    df_rank=df.rank(axis=1,ascending=True,pct=True)
+    temp=df_rank<0.2
+    temp[temp==False]=np.nan
+    res['g1']=np.array((temp*ret).mean(axis=1))
+    temp=(df_rank>=0.2)*(df_rank<0.4)
+    temp[temp==False]=np.nan
+    res['g2']=np.array((temp*ret).mean(axis=1))
+    temp=(df_rank>=0.4)*(df_rank<0.6)
+    temp[temp==False]=np.nan
+    res['g3']=np.array((temp*ret).mean(axis=1))
+    temp=(df_rank>=0.6)*(df_rank<0.8)
+    temp[temp==False]=np.nan
+    res['g4']=np.array((temp*ret).mean(axis=1))
+    temp=df_rank>=0.8
+    temp[temp==False]=np.nan
+    res['g5']=np.array((temp*ret).mean(axis=1))
+    return res
+g_beta=groupret(beta,ret)
+#g_alpha=groupret(alpha,ret)
+#g_res_mean=groupret(residual,ret)
+g_r_square=groupret(r_square,ret)
+g_res_std=groupret(res_std,ret)
+g_beta.index=ret.index
+#g_alpha.index=ret.index
+#g_res_mean.index=ret.index
+g_r_square.index=ret.index
+g_res_std.index=ret.index
+
+import matplotlib.pylab as plt
+plt.plot(ret.index,np.cumprod(1+np.array(g_r_square),axis=0))
+plt.xticks(rotation=30)
+plt.legend(['group1','group2','group3','group4','group5'],loc='upper left')
+plt.title('group net value of R_square')
+
+plt.plot(ret.index,np.cumprod(1+np.array(g_beta),axis=0))
+plt.xticks(rotation=30)
+plt.legend(['group1','group2','group3','group4','group5'],loc='upper left')
+plt.title('group net value of beta')
+
+plt.plot(ret.index,np.cumprod(1+np.array(g_res_std),axis=0))
+plt.xticks(rotation=30)
+plt.legend(['group1','group2','group3','group4','group5'],loc='upper left')
+plt.title('group net value of idisyoncratic volatility')
