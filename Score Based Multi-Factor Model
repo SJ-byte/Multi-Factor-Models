@@ -1,0 +1,765 @@
+# 可以自己import我们平台支持的第三方python模块，比如pandas、numpy等。
+import pandas as pd
+import talib
+import datetime as datetime
+import numpy as np
+
+#Stop Loss Function, only stop loss, don't stop winning
+def stoploss(context,bar_dict):
+    for stock in context.stocks:
+        #print(stock)
+        #print(bar_dict[stock].total_turnover)
+        if bar_dict[stock].last<context.portfolio.positions[stock].average_cost*context.stoplossmultipler:# 现价低于 原价一定比例
+            order_target_percent(stock,0)
+            #print(str(stock)+'跌幅超过'+str((1-context.stoplossmultipler)*100) +'%  触发止损')
+        #elif bar_dict[stock].last>context.portfolio.positions[stock].average_cost*context.stoppofitmultipler:# 现价高于原价一定比例
+            #order_target_percent(stock,0)
+            #print(str(stock)+'涨幅幅超过'+str((context.stoppofitmultipler-1)*100) +'%  触发止盈')
+
+#in fact in this strategy, we use "510300.XSHG" to hedge，这个是沪深300EF
+#Volatility we should use ascending order
+def CAPMAlpha60M(stock,startdate,enddate):
+    if len(stock) != 0 :
+        indexprice = get_price('000001.XSHG', startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+        prices = get_price(list(stock), startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+    #print(stock,startdate,enddate)
+    #print(prices)
+        #print(len(stock))
+        returns = np.log(prices/prices.shift(1)).iloc[1:-1]
+        indexreturn = np.log(indexprice/indexprice.shift(1))
+        indexreturn = indexreturn.iloc[1:-1]
+        Beta = pd.Series()
+        Alpha = pd.Series()
+        for i in list(range(1,len(stock)+1)):
+            covmat = np.cov(returns[stock[i-1]],indexreturn)
+            beta = covmat[0,1]/covmat[1,1]
+            alpha= np.mean(returns[stock[i-1]]-beta*np.mean(indexreturn))
+            Beta = Beta.set_value(stock[i-1], beta)
+            Alpha = Alpha.set_value(stock[i-1], alpha)
+        return Alpha
+    else:
+        return pd.Series(-1000, index = ['000001.XSHE'])
+        
+
+def CAPMBeta60M(stock,startdate,enddate):
+    if len(stock) != 0 :
+        indexprice = get_price('000001.XSHG', startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+        prices = get_price(list(stock), startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+    #print(stock,startdate,enddate)
+    #print(prices)
+        #print(len(stock))
+        returns = np.log(prices/prices.shift(1)).iloc[1:-1]
+        indexreturn = np.log(indexprice/indexprice.shift(1))
+        indexreturn = indexreturn.iloc[1:-1]
+        Beta = pd.Series()
+        Alpha = pd.Series()
+        for i in list(range(1,len(stock)+1)):
+            covmat = np.cov(returns[stock[i-1]],indexreturn)
+            beta = covmat[0,1]/covmat[1,1]
+            alpha= np.mean(returns[stock[i-1]]-beta*np.mean(indexreturn))
+            Beta = Beta.set_value(stock[i-1], beta)
+            Alpha = Alpha.set_value(stock[i-1], alpha)
+        return Beta
+    else:
+        return pd.Series(-1000, index = ['000001.XSHE'])
+        
+        
+def RSIIndividual(stock,start,end):
+    #print(stock)
+    window_length = 14
+    # Get data
+    #print('in the function')
+    #print(start)
+    #print(end)
+    data = get_price(list(stock), start, end_date=end, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+    #print(data)
+    # Get just the close
+    close = data
+    # Get the difference in price from previous step
+    delta = close.diff()
+    # Get rid of the first row, which is NaN since it did not have a previous 
+    # row to calculate the differences
+    delta = delta[1:]
+
+    # Make the positive gains (up) and negative gains (down) Series
+    up, down = delta.copy(), delta.copy()
+    up[up < 0] = 0
+    down[down > 0] = 0
+
+    # Calculate the EWMA
+    roll_up1 = pd.stats.moments.ewma(up, window_length)
+    roll_down1 = pd.stats.moments.ewma(down.abs(), window_length)
+
+    # Calculate the RSI based on EWMA
+    RS1 = roll_up1 / roll_down1
+    RSI1 = 100.0 - (100.0 / (1.0 + RS1))
+    #print(RSI1)
+    #return RSI1[-1]
+    return RSI1.iloc[-1]
+    # Calculate the SMA
+    #roll_up2 = pandas.rolling_mean(up, window_length)
+    #roll_down2 = pandas.rolling_mean(down.abs(), window_length)
+
+    # Calculate the RSI based on SMA
+    #RS2 = roll_up2 / roll_down2
+    #RSI2 = 100.0 - (100.0 / (1.0 + RS2))
+
+    # Compare graphically
+    #plt.figure()
+    #RSI1.plot()
+    #RSI2.plot()
+    #plt.legend(['RSI via EWMA', 'RSI via SMA'])
+    #plt.show()
+
+def Volatility(stock,startdate,enddate): 
+    if len(stock) != 0 :
+        #indexprice = get_price('000001.XSHG', startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+        prices = get_price(list(stock), startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+    #print(stock,startdate,enddate)
+    #print(prices)
+        #print(len(stock))
+        returns = np.log(prices/prices.shift(1)).iloc[1:-1]
+        #indexreturn = np.log(indexprice/indexprice.shift(1))
+        #indexreturn = indexreturn.iloc[1:-1]
+        #Beta = pd.Series()
+        Volatility = pd.Series()
+        for i in list(range(1,len(stock)+1)):
+            covmat = np.cov(returns[stock[i-1]])
+            Volatility = Volatility.set_value(stock[i-1], covmat)
+        return Volatility
+    else:
+        return pd.Series(-1000, index = ['000001.XSHE'])
+
+def Min130Day(stock,startdate,enddate): 
+    if len(stock) != 0 :
+        prices = get_price(list(stock), startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+        returns = np.log(prices/prices.shift(1)).iloc[1:-1]
+        MinReturn = returns.min()
+        return MinReturn
+    else:
+        return pd.Series(1000, index = ['000001.XSHE'])
+    
+def CV90Day(stock,startdate,enddate): 
+    if len(stock) != 0 :
+        prices = get_price(list(stock), startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+        #returns = np.log(prices/prices.shift(1)).iloc[1:-1]
+        CV = pd.Series()
+        for i in list(range(1,len(stock)+1)):
+            CV.loc[stock[i-1]] = np.std(prices[stock[i-1]])/np.mean(prices[stock[i-1]])
+        return CV
+    else:
+        return pd.Series(1000, index = ['000001.XSHE'])
+
+#Price to Lowest also asc alpha, also need to reverse
+def PricetoLowest(stock,startdate,enddate):
+    if len(stock) != 0 :
+        prices = get_price(list(stock), startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+    #print(stock,startdate,enddate)
+    #print(prices)
+        #print(len(stock))
+        RatiotoLowest = pd.Series()
+        for i in list(range(1,len(stock)+1)):
+            #print(i)
+            #print(stock[i-1])
+            #print(prices.iloc[np.shape(prices)[0]-1][[stock[i-1]]]/min(prices[stock[i-1]]))
+            RatiotoLowest = RatiotoLowest.append(pd.Series((prices.iloc[np.shape(prices)[0]-1][[stock[i-1]]]/min(prices[stock[i-1]]))))
+            #(prices.iloc[np.shape(prices)[0]-1][[stock[i-1]]]/min(prices[stock[i-1]]))
+            #If we didn't define dataframe before using here, we should use loc instead of iloc
+        #print(returns)
+        returnv = (RatiotoLowest)
+        return returnv
+    else:
+        return pd.Series(-1000, index = ['000001.XSHE'])
+
+# 在这个方法中编写任何的初始化逻辑。context对象将会在你的算法策略的任何方法之间做传递。
+def sharpe(stock,startdate,enddate):
+    #print(stock[0:10])
+    if len(stock) != 0 :
+        prices = get_price(list(stock), startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+    #print(stock,startdate,enddate)
+    #print(prices)
+        returns = pd.DataFrame(columns=(stock))
+        for i in list(range(1,np.shape(prices)[0]-1)):
+            #print(i)
+            returns.loc[i] = ((prices.iloc[i]/prices.iloc[i-1]-1))
+        #print(returns)
+        ave = np.mean(returns)
+        std = np.std(returns)
+        sharpe = (ave/std)*np.sqrt(252)
+        returnv = pd.Series(sharpe,index = [stock])
+        #print(returnv.iloc[0:10])
+        return returnv
+    else:
+        return pd.Series(-1000, index = ['000001.XSHE'])
+        
+def SixMonthsPriceReversal(stock,startdate,enddate):
+    if len(stock) != 0 :
+        prices = get_price(list(stock), startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+    #print(stock,startdate,enddate)
+    #print(prices)
+        #print(len(stock))
+        SixMonthsPriceReversal = pd.Series()
+        for i in list(range(1,len(stock)+1)):
+            #print(i)
+            #print(stock[i-1])
+            #print(prices.iloc[np.shape(prices)[0]-1][[stock[i-1]]]/min(prices[stock[i-1]]))
+            SixMonthsPriceReversal = SixMonthsPriceReversal.append(pd.Series((prices.iloc[np.shape(prices)[0]-1][[stock[i-1]]]/prices.iloc[0][[stock[i-1]]])))
+            #(prices.iloc[np.shape(prices)[0]-1][[stock[i-1]]]/min(prices[stock[i-1]]))
+            #If we didn't define dataframe before using here, we should use loc instead of iloc
+        #print(returns)
+        returnv = (SixMonthsPriceReversal)
+        return returnv
+    else:
+        return pd.Series(-1000, index = ['000001.XSHE'])
+        
+def OneMonthsPriceReversal(stock,startdate,enddate):
+    if len(stock) != 0 :
+        prices = get_price(list(stock), startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+    #print(stock,startdate,enddate)
+    #print(prices)
+        #print(len(stock))
+        OneMonthsPriceReversal = pd.Series()
+        for i in list(range(1,len(stock)+1)):
+            #print(i)
+            #print(stock[i-1])
+            #print(prices.iloc[np.shape(prices)[0]-1][[stock[i-1]]]/min(prices[stock[i-1]]))
+            OneMonthsPriceReversal = OneMonthsPriceReversal.append(pd.Series((prices.iloc[np.shape(prices)[0]-1][[stock[i-1]]]/prices.iloc[0][[stock[i-1]]])))
+            #(prices.iloc[np.shape(prices)[0]-1][[stock[i-1]]]/min(prices[stock[i-1]]))
+            #If we didn't define dataframe before using here, we should use loc instead of iloc
+        #print(returns)
+        returnv = (OneMonthsPriceReversal)
+        return returnv
+        
+def MACD10dayMA(stock,startdate,enddate):
+    if len(stock) != 0 :
+        prices = get_price(list(stock), startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+        MACDMA = prices.iloc[0]
+        count = 0
+        for eachstock in stock:
+            close = prices[eachstock].values
+            #print(close)
+            if sum(np.isnan(close)) == len(close):
+                MACDMA[count] = np.nan
+                count = count + 1
+            else:
+                macd,macdsignal,macdhist = talib.MACD(close, fastperiod=12, slowperiod=26, signalperiod=9)
+                MACDMA[count] = pd.rolling_mean(macd,10)[-1]
+                count = count + 1
+        return MACDMA
+
+def HighLow(stock,startdate,enddate):
+    if len(stock) != 0 :
+        prices = get_price(list(stock), startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+        ratio = prices.iloc[0]
+        ratio = (prices.max(axis = 0) - prices.iloc[-1])/abs((prices.min(axis = 0) - prices.iloc[-1]))
+        return ratio
+
+#Not done yet
+def Low130(stock,startdate,enddate):
+    if len(stock) != 0 :
+        prices = get_price(list(stock), startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+        ratio = prices.iloc[0]
+        ratio = (prices.max(axis = 0) - prices.iloc[-1])/abs((prices.min(axis = 0) - prices.iloc[-1]))
+        return ratio
+        
+def getreversal6Mind(indname,startdate,enddate):
+    allstock = industry(indname)
+    #print(allstock)
+    if len(allstock) > 0:
+        indreturn = getindave6Mind(indname,startdate,enddate)
+        tempp = get_price(allstock, startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)
+        if len(tempp) > 0:
+            tempp = get_price(allstock, startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['ClosingPx']
+            ret = tempp.iloc[-1]/tempp.iloc[0]
+            retcompare = ret - 1 - indreturn
+            std = np.std(ret-1)
+            return retcompare/std
+        else:
+            return pd.Series(-1000, index = ['000001.XSHE'])
+    else:
+        return pd.Series(-1000, index = ['000001.XSHE'])
+    
+    
+def getindave6Mind(indname,startdate,enddate):
+    allstock = industry(indname)
+    if len(allstock) > 0:
+        tempp = get_price(allstock, startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)
+        if np.shape(tempp)[0] > 0:
+            tempp = get_price(allstock, startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['ClosingPx']
+            ret = tempp.iloc[-1]/tempp.ix[0]
+            #print(np.mean(ret)-1)
+            return np.mean(ret)-1
+        else:
+            return 1
+    else:
+        return 1
+#
+def Select6Mind(context, bar_dict,startdate,enddate):
+    allind = ['A01','A02','A03','A04','A05','B06','B07','B08','B09','B10','B11','B12','C13','C14','C15','C16','C17','C18','C19','C20','C21','C22','C23','C24','C25','C26','C27','C28','C29','C30','C31','C32','C33','C34','C35','C36','C37','C38','C39','C40','C41','C42','C43','D44','D45','D46','E47','E48','E49','E50','F51','F52','G53','G54','G55','G56','G57','G58','G59','G60','H61','H62','I63','I64','I65','J66','J67','J68','J69','K70','L71','L72','M73','M74','M75','N76','N77','N78','O79','O80','O81','P82','Q83','Q84','R85','R86','R87','R88','R89']
+    # 实时打印日志
+    StockTotal = pd.Series(0)
+    for ind in allind:
+        stocks = industry(ind)
+        #print(ind,startdate,enddate)
+        StocksResult = getreversal6Mind(ind,startdate,enddate)
+        StockTotal = StockTotal.append(StocksResult)
+        #print(StockTotal[0:5])
+    #StockTotal = StockTotal.dropna()
+    #StockTotal[StockTotal.index.values == '000001.XSHE']
+    #StockTotal = StockTotal.order(ascending=False)
+    interestedstocks = (index_components('000300.XSHG'))
+    StockTotal = StockTotal.loc[interestedstocks]
+    SelectedStocks = StockTotal.loc[interestedstocks]
+    #indexs = SelectedStocks.index.values
+    #uindexs = list(set(indexs))
+    result = SelectedStocks[~SelectedStocks.index.duplicated()]
+    return result
+    #return StockTotal
+    #logger.info("Interested at stock: " + str(context.Stocks))
+    #update_universe(context.Stocks)
+    
+    
+def getreversal1Mind(indname,startdate,enddate):
+    allstock = industry(indname)
+    #print(allstock)
+    if len(allstock) > 0:
+        indreturn = getindave1Mind(indname,startdate,enddate)
+        tempp = get_price(allstock, startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)
+        if len(tempp) > 0:
+            tempp = get_price(allstock, startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['ClosingPx']
+            ret = tempp.iloc[-1]/tempp.iloc[0]
+            retcompare = ret - 1 - indreturn
+            std = np.std(ret-1)
+            return retcompare/std
+        else:
+            return pd.Series(-1000, index = ['000001.XSHE'])
+    else:
+        return pd.Series(-1000, index = ['000001.XSHE'])
+    
+    
+def getindave1Mind(indname,startdate,enddate):
+    allstock = industry(indname)
+    if len(allstock) > 0:
+        tempp = get_price(allstock, startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)
+        if np.shape(tempp)[0] > 0:
+            tempp = get_price(allstock, startdate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['ClosingPx']
+            ret = tempp.iloc[-1]/tempp.ix[0]
+            #print(np.mean(ret)-1)
+            return np.mean(ret)-1
+        else:
+            return 1
+    else:
+        return 1
+#
+def Select1Mind(context, bar_dict,startdate,enddate):
+    allind = ['A01','A02','A03','A04','A05','B06','B07','B08','B09','B10','B11','B12','C13','C14','C15','C16','C17','C18','C19','C20','C21','C22','C23','C24','C25','C26','C27','C28','C29','C30','C31','C32','C33','C34','C35','C36','C37','C38','C39','C40','C41','C42','C43','D44','D45','D46','E47','E48','E49','E50','F51','F52','G53','G54','G55','G56','G57','G58','G59','G60','H61','H62','I63','I64','I65','J66','J67','J68','J69','K70','L71','L72','M73','M74','M75','N76','N77','N78','O79','O80','O81','P82','Q83','Q84','R85','R86','R87','R88','R89']
+    # 实时打印日志
+    StockTotal = pd.Series(0)
+    for ind in allind:
+        stocks = industry(ind)
+        #print(ind,startdate,enddate)
+        StocksResult = getreversal1Mind(ind,startdate,enddate)
+        StockTotal = StockTotal.append(StocksResult)
+        #print(StockTotal[0:5])
+    #StockTotal = StockTotal.dropna()
+    #StockTotal[StockTotal.index.values == '000001.XSHE']
+    #StockTotal = StockTotal.order(ascending=True)
+    interestedstocks = (index_components('000300.XSHG'))
+    #StockTotal = StockTotal.loc[interestedstocks]
+    SelectedStocks = StockTotal.loc[interestedstocks]
+    #indexs = SelectedStocks.index.values
+    result = SelectedStocks[~SelectedStocks.index.duplicated()]
+    return result
+    #logger.info("Interested at stock: " + str(context.Stocks))
+    #update_universe(context.Stocks)
+
+
+def adjust_future(context, bar_dict):
+    portfolio_value = context.portfolio.portfolio_value* context.position_limit 
+    order_target_value("510300.XSHG", -(portfolio_value))
+
+
+#除了新加的Ind别的都已经好了    
+def choose_stocks(context,bar_dict):
+    #This is the weight for different classes
+    #Size, Price Momentum, Valuation, Capital Efficiency, Volatility
+    totalweight = [0.365044248,0.30420354,0.218515997,0.054373724,0.057862491]
+    sizeweight = 1 #LogSize
+    
+    #Close to 260D Low
+    #Ind Rel 1M Price Rev
+    #Ind Rel 6M Price Mom
+    #1M Price Reversal
+    #Sharpe Ratio
+    #60M Alpha
+    #6 Months Price Reversal
+    #14D RSI
+    PMWeight = [0.161363636,0.154370629,0.137062937,0.133916084,0.107167832,0.104895105,0.119405594,0.081818182]
+    
+    
+    #Book to Price
+    #Ind Rel EBITDA / P
+    #5Y Rel Asset / Price
+    #5Y Rel OCF / Price
+    #EBITDA / Price
+    ValuationWeight = [0.186915888,0.217679128,0.207554517,0.167834891,0.220015576]
+    
+    #IndRel LT Debt/Ast Ratio
+    #Financial Leverage
+    #5Y Rel Return on Equity
+    #5Y Rel ROA
+    #5Y Rel ROIC
+    CEWeight = [0.015649452,0.289514867,0.297339593,0.231611894,0.165884194]
+    
+    #130DMinRtn
+    #90DCV
+    VolWeight = [0.849264706,0.150735294]
+    #print("we are here at choose_stocks")
+    
+    #Deal with Size first
+    fundamental_df = get_fundamentals(
+        query(
+            fundamentals.eod_derivative_indicator.market_cap 
+        ).filter(
+            fundamentals.income_statement.stockcode.in_(index_components('000300.XSHG'))
+        )
+    )
+    fundamental_df = fundamental_df.T
+    logsize = np.log(fundamental_df)
+    market_cap_rank = logsize.rank()
+    Size_rank = market_cap_rank['market_cap']
+    print("Here is Size Rank")
+    print(type(Size_rank))
+    print(Size_rank[0:5])
+    #deal with PM
+    #Close to 260D Low
+    #Ind Rel 1M Price Rev, not yet, Done in single factor
+    #Ind Rel 6M Price Mom, not yet, Done in single factor
+    #1M Price Reversal
+    #Sharpe Ratio
+    #60M Alpha
+    #6 Months Price Reversal
+    #14D RSI
+    PMWeight = [0.161363636,0.154370629,0.137062937,0.133916084,0.107167832,0.104895105,0.119405594,0.081818182]
+    enddate = "{:%Y-%m-%d}".format(get_previous_trading_date(context.now))
+    startdatefor260low = "{:%Y-%m-%d}".format(context.now - datetime.timedelta(days=260))
+    startdateforRSI = "{:%Y-%m-%d}".format(context.now - datetime.timedelta(days=36)) #make sure we have more than 14 business days
+    startdateforCAPM = "{:%Y-%m-%d}".format(context.now - datetime.timedelta(days=1000))    
+    startdateforSharpe = "{:%Y-%m-%d}".format(context.now - datetime.timedelta(days=365))
+    startdateforSixM = "{:%Y-%m-%d}".format(context.now - datetime.timedelta(days=180))
+    startdateforOneM = "{:%Y-%m-%d}".format(context.now - datetime.timedelta(days=30))
+    startdateforMACD = "{:%Y-%m-%d}".format(context.now - datetime.timedelta(days=90))
+    startdateforHL = "{:%Y-%m-%d}".format(context.now - datetime.timedelta(days=30))    
+    startdatefor6Mind = "{:%Y-%m-%d}".format(context.now - datetime.timedelta(days=180))
+    startdatefor1Mind = "{:%Y-%m-%d}".format(context.now - datetime.timedelta(days=30))   
+    #print(enddate,startdateforvol,startdatefor260low)
+    stock = logsize.index.values #The names of all stocks
+    #print("stocks all")
+    #print(stock[0:5])
+    #trading_stocks = get_trading_stocks(stock, bar_dict)
+    #Mainly because get_trading stocks function has some errors, try later
+    trading_stocks = stock
+    #we transfrom it in order to use rank function here
+    RSI = RSIIndividual(stock,startdateforRSI,enddate)
+    StockTotal260Low = PricetoLowest(stock,startdatefor260low,enddate)
+    Alpha = CAPMAlpha60M(stock,startdateforCAPM,enddate)
+    Sharpe = sharpe(stock,startdateforSharpe,enddate)
+    SixMR = SixMonthsPriceReversal(stock,startdateforSixM,enddate)
+    OneMR = OneMonthsPriceReversal(stock,startdateforOneM,enddate)
+    MACD = MACD10dayMA(stock,startdateforMACD,enddate)
+    HL = HighLow(stock,startdateforHL,enddate)
+    Ind6M = Select6Mind(context, bar_dict,startdatefor6Mind,enddate)
+    Ind1M = Select6Mind(context, bar_dict,startdatefor1Mind,enddate)
+    
+    RSI_rank = RSI.rank(ascending=False)    
+    Low_rank = StockTotal260Low.rank()
+    Alpha_rank = Alpha.rank(ascending=False)
+    #Beta_rank = Beta.rank(ascending=False)
+    Sharpe_rank = Sharpe.rank(ascending=False)
+    SixMR_rank = SixMR.rank()
+    OneMR_rank = OneMR.rank()
+    MACD_rank = MACD.rank(ascending=False)
+    HL_rank = HL.rank(ascending=False)
+    Ind6M_rank = Ind6M.rank(ascending=False)
+    Ind1M_rank = Ind1M.rank(ascending=True)
+    #Close to 260D Low
+    #Ind Rel 1M Price Rev, not yet, Done in single factor
+    #Ind Rel 6M Price Mom, not yet, Done in single factor
+    #1M Price Reversal
+    #Sharpe Ratio
+    #60M Alpha
+    #6 Months Price Reversal
+    #14D RSI
+    PM_rank = PMWeight[0] * Low_rank + PMWeight[7] * RSI_rank + PMWeight[5] * Alpha_rank + PMWeight[4] * Sharpe_rank + PMWeight[6] * SixMR_rank + PMWeight[3] * OneMR_rank + PMWeight[2] * Ind6M_rank + PMWeight[1] * Ind1M_rank
+    print("Here is PM_rank")
+    print(type(PM_rank))
+    print(len(PM_rank),"PM_rank")
+    print(len(Ind6M_rank),"Ind6M_rank")
+    #print(Ind6M_rank[0:5])
+    #print(Ind1M_rank[0:5])
+    #print(PM_rank)
+    #print(np.shape(PM_rank))
+    
+    #Valuation here
+    #Book to Price
+    #Ind Rel EBITDA / P, not down yet
+    #5Y Rel Asset / Price
+    #5Y Rel OCF / Price
+    #EBITDA / Price
+    ValuationWeight = [0.186915888,0.217679128,0.207554517,0.167834891,0.220015576]
+    
+    fundamental_df = get_fundamentals(
+        query(
+            fundamentals.balance_sheet.total_assets, 
+            fundamentals.financial_indicator.ebitda,
+            fundamentals.financial_indicator.ocf_to_debt
+        ).filter(
+            fundamentals.income_statement.stockcode.in_(index_components('000300.XSHG'))
+        )
+    )    
+    #fundamental_df = fundamental_df.T
+    fundamental_df_T = fundamental_df.T
+    total_assets = fundamental_df_T.total_assets
+    ebitda = fundamental_df_T.ebitda
+    ocf_to_debt = fundamental_df_T.ocf_to_debt
+    current_price = get_price(list(stock), enddate, enddate, frequency='1d', fields=None, adjusted=True)['ClosingPx']
+    
+    BP = total_assets/current_price
+    ocf_to_debt = ocf_to_debt
+    EBITDAP = ebitda/current_price
+    
+    BP_rank = BP.rank(ascending=False)    
+    #OCF_rank = ocf_to_debt.rank(ascending=False)
+    EBITDAP_rank = EBITDAP.rank(ascending=False)
+    
+    Valuation5Y = fundamental_df = get_fundamentals(
+        query(
+            fundamentals.financial_indicator.operating_cash_flow_per_share,
+            fundamentals.balance_sheet.total_assets,
+            fundamentals.balance_sheet.total_equity
+        ).filter(
+            fundamentals.income_statement.stockcode.in_(index_components('000300.XSHG'))
+        ),interval = '5y'
+    )    
+    
+    AssetPerEquity = Valuation5Y.total_assets/Valuation5Y.total_equity
+    OCFPerEquity = Valuation5Y.operating_cash_flow_per_share
+    APEMA = 0.5 * AssetPerEquity.iloc[0] + 0.5 * 0.5 * AssetPerEquity.iloc[1] + 0.125 * AssetPerEquity.iloc[2] + 0.5 * 0.125 * AssetPerEquity.iloc[3] + 0.5 * 0.5 * 0.125 * AssetPerEquity.iloc[4]
+    PCFEMA = 0.5 * OCFPerEquity.iloc[0] + 0.5 * 0.5 * OCFPerEquity.iloc[1] + 0.125 * OCFPerEquity.iloc[2] + 0.5 * 0.125 * OCFPerEquity.iloc[3] + 0.5 * 0.5 * 0.125 * OCFPerEquity.iloc[4]
+    prices = get_price(list(index_components('000300.XSHG')), enddate, end_date=enddate, frequency='1d', fields=None, adjusted=True)['OpeningPx']
+    AssetPerEquityPrice = APEMA/prices
+    PCFEMAPrice = PCFEMA/prices
+    
+    AEPMA_rank = AssetPerEquityPrice.iloc[0].rank(ascending=False)
+    PCFEMAPrice_rank = PCFEMAPrice.iloc[0].rank(ascending=False)
+    #inc_earnings_per_share_rank=fundamental_df_T.inc_earnings_per_share.rank(ascending=False)
+    #inc_revenue_rank = fundamental_df_T.inc_revenue.rank(ascending=False)
+    #pe_ratio_rank = fundamental_df_T.pe_ratio.rank()
+    #Rank is in ascding order by default
+    Valuation_rank = ValuationWeight[0] * BP_rank + ValuationWeight[2] * AEPMA_rank + ValuationWeight[3] * PCFEMAPrice_rank + (ValuationWeight[1] + ValuationWeight[4]) * EBITDAP_rank
+    print(type(Valuation_rank))
+    #Because Previously Valuation Rank is a dataframe
+    Valuation_rank = Valuation_rank.iloc[0]
+    print("valuation_rank")
+    print(type(Valuation_rank))
+    print(len(Valuation_rank))
+    print(Valuation_rank[0:5])
+    #Deal with Capital Efficiency, all done
+    #IndRel LT Debt/Ast Ratio
+    #Financial Leverage
+    #5Y Rel Return on Equity
+    #5Y Rel ROA
+    #5Y Rel ROIC
+    CEWeight = [0.015649452,0.289514867,0.297339593,0.231611894,0.165884194]
+    
+    fundamental_df = get_fundamentals(
+        query(
+            fundamentals.balance_sheet.long_term_liabilities, 
+            fundamentals.balance_sheet.total_assets, 
+            fundamentals.balance_sheet.total_equity,
+            fundamentals.cash_flow_statement.cash_flow_from_operating_activities,
+            fundamentals.financial_indicator.return_on_invested_capital,
+            fundamentals.financial_indicator.return_on_equity,
+            fundamentals.financial_indicator.return_on_asset
+        ).filter(
+            fundamentals.income_statement.stockcode.in_(index_components('000300.XSHG'))
+        )
+    )    
+    
+    fundamental_df_1 = get_fundamentals(
+        query(
+            fundamentals.financial_indicator.return_on_invested_capital,
+            fundamentals.financial_indicator.return_on_equity,
+            fundamentals.financial_indicator.return_on_asset
+        ).filter(
+            fundamentals.income_statement.stockcode.in_(index_components('000300.XSHG'))
+        ),interval = '5y'
+    )    
+    
+    fundamental_df_T = fundamental_df.T
+    LTDebt = fundamental_df_T.long_term_liabilities
+    Asset = fundamental_df_T.total_assets
+    LTARatio = LTDebt/Asset
+    TEquity = fundamental_df_T.total_equity
+    Financial_Leverage = Asset/TEquity
+    
+    ROE_raw = fundamental_df_1.return_on_equity
+    ROA_raw = fundamental_df_1.return_on_asset
+    ROIC_raw = fundamental_df_1.return_on_invested_capital
+    #print(ROE)
+    ROE = 0.5 * ROE_raw.iloc[0] + 0.5 * 0.5 * ROE_raw.iloc[1] + 0.125 * ROE_raw.iloc[2] + 0.5 * 0.125 * ROE_raw.iloc[3] + 0.5 * 0.5 * 0.125 * ROE_raw.iloc[4]
+    
+    ROA = 0.5 * ROA_raw.iloc[0] + 0.5 * 0.5 * ROA_raw.iloc[1] + 0.125 * ROA_raw.iloc[2] + 0.5 * 0.125 * ROA_raw.iloc[3] + 0.5 * 0.5 * 0.125 * ROA_raw.iloc[4]
+        
+    ROIC = 0.5 * ROIC_raw.iloc[0] + 0.5 * 0.5 * ROIC_raw.iloc[1] + 0.125 * ROIC_raw.iloc[2] + 0.5 * 0.125 * ROIC_raw.iloc[3] + 0.5 * 0.5 * 0.125 * ROIC_raw.iloc[4]
+    
+    LTARatio_rank = LTARatio.rank(ascending=True)    
+    Financial_Leverage_rank = Financial_Leverage.rank(ascending=True)
+    ROE_rank = ROE.rank(ascending=False)
+    ROA_rank = ROA.rank(ascending=False)
+    ROIC_rank = ROIC.rank(ascending=False)
+    #print("ROA_rank")
+    #print(ROA_rank)
+    #print("ROA_rank")
+    #print(ROE_rank)
+    #print("ROA_rank")
+    #print(ROIC_rank)
+    #print("LTARatio_rank")
+    #print(LTARatio_rank)
+    #print("Financial_Leverage_rank")
+    #print(Financial_Leverage_rank)
+    CE_rank =  (CEWeight[0] + CEWeight[1]) * Financial_Leverage_rank + CEWeight[2] * ROE_rank + CEWeight[3] * ROA_rank + CEWeight[4] * ROIC_rank
+    CE_rank = CE_rank
+    print(type(CE_rank),"CE_rank")
+    print(len(CE_rank))
+    print(CE_rank[0:5])
+   
+   
+    #130DMinRtn
+    #90DCV
+    VolWeight = [0.849264706,0.150735294]
+
+    startdateforvol = "{:%Y-%m-%d}".format(context.now - datetime.timedelta(days=30))
+    startdatefor130Min = "{:%Y-%m-%d}".format(context.now - datetime.timedelta(days=130))
+    startdateforCV = "{:%Y-%m-%d}".format(context.now - datetime.timedelta(days=90))
+    StockTotalVol = Volatility(stock,startdateforvol,enddate)
+    StockTotal130Min = Min130Day(stock,startdatefor130Min,enddate)
+    StockTotalCV = CV90Day(stock,startdateforCV,enddate)
+    #Vol_rank = StockTotalVol.rank()
+    Min_rank = StockTotal130Min.rank(ascending=False)
+    CV_rank = StockTotalCV.rank()
+    
+    Vol_rank = VolWeight[0] * Min_rank + VolWeight[1] * CV_rank
+    
+    print("Vol_rank")
+    print(Vol_rank[0:5])
+    #print(startdateforRSI)
+    #Initialize the scores vector
+    stock_score_s = Vol_rank
+    #print(type(Vol_rank))
+    #print(Vol_rank.loc['000001.XSHE'])
+    #print(stock_score_s[0:5])
+    #print(Vol_rank[0:5])
+    #print(len(Low_rank),len(Vol_rank),len(pe_ratio_rank),len(market_cap_rank),len(inc_revenue_rank),len(inc_earnings_per_share_rank))
+    #market_cap_rank[stock_code]  + pe_ratio_rank[stock_code] + inc_revenue_rank[stock_code] + inc_earnings_per_share_rank[stock_code] + 
+
+    for stock_code in trading_stocks:
+        #print(stock_code)
+        #print(totalweight[1])
+        #print(stock_score_s.loc[stock_code])
+        #print(totalweight[0])
+        #print(Size_rank.loc[stock_code])
+        #print(PM_rank.loc[stock_code])
+        #print(type(stock_score_s))
+        #print(type(Size_rank))
+        #print(type(PM_rank))
+        #print(type(Valuation_rank))        
+        #print(type(CE_rank))
+        #print(type(Vol_rank))
+        #Size_rank.loc[stock_code]  
+        stock_score_s.loc[stock_code] =  totalweight[0] * Size_rank.loc[stock_code] + totalweight[1] * PM_rank.loc[stock_code] + totalweight[2] *Valuation_rank.loc[stock_code] + totalweight[3] * CE_rank.loc[stock_code] + totalweight[4] * Vol_rank.loc[stock_code] #+ RSI_rank[stock_code] + Alpha_rank[stock_code] + Sharpe_rank[stock_code] + SixMR_rank[stock_code] + MACD_rank[stock_code] + HL_rank[stock_code]+ Beta_rank[stock_code]totalweight[1] * + totalweight[2] *
+    #print("stocks score")
+    #print(stock_score_s[0:5])
+    #把自己设计的因子可以加到这个地方来
+    #stock_score_s =  pd.Series(stock_score_dict,name = 'scores')
+    #stock_score_s = stock_score_s.T
+    stock_score_s.sort(ascending=True)
+    context.stocks = stock_score_s.index[0:context.position_num].values
+
+    update_universe(context.stocks)
+
+def get_trading_stocks(raw_stocks, bar_dict):
+    trading_stocks = []
+    for stock in raw_stocks:
+        if bar_dict[stock].is_trading:
+            trading_stocks.append(stock)
+    return trading_stocks
+    
+def adjust_positions(context, bar_dict):
+
+    for last_stock in context.portfolio.positions:
+        if bar_dict[last_stock].is_trading:
+            order_target_percent(last_stock,0)
+    #firstly we sell out all the stocks in our portfolio to make sure we can get the ideal weight that we need.
+    
+    to_buy_stocks = context.stocks
+    #here in fact we set a limit to how much money we can use
+    avail_cash = context.portfolio.cash*context.position_limit
+    each_cash = avail_cash/len(to_buy_stocks)
+    #logger.info("avail cash is %f, stock num is %d, each stock cash is %f.",avail_cash,len(to_buy_stocks),each_cash )
+    for current_stock in to_buy_stocks:
+        order_target_value(current_stock, each_cash)    
+    portfolio_value = context.portfolio.portfolio_value* context.position_limit 
+    order_target_value("510300.XSHG", -(portfolio_value))
+    
+def init(context):
+    context.benchmark = '000300.XSHG'    
+    context.stocks = '000300.XSHG'
+    context.short_selling_allowed = True
+    context.stoplossmultipler= 0.85 #止损 乘数 
+    context.stoppofitmultipler= 1000.8 #止盈 乘数
+    context.Traded = 0
+    context.position_limit  = 0.9
+    context.position_num = 10
+    context.countdate = 0
+    context.holdingperiod = 15 #Here we refer to business day
+    #scheduler.run_monthly(choose_stocks, monthday=1)
+    #scheduler.run_monthly(adjust_positions, monthday=1)
+    #scheduler.run_weekly(adjust_future, weekday=1)
+    
+    update_universe([context.benchmark])
+    
+def before_trading(context, bar_dict):
+    context.countdate = context.countdate + 1
+    if context.countdate%context.holdingperiod == 1:
+        #enddate = "{:%Y-%m-%d}".format(get_previous_trading_date(context.now))
+        #startdate = "{:%Y-%m-%d}".format(context.now - datetime.timedelta(days=600))
+        #print(startdate)
+        #print(enddate)
+        #enddate = enddate.strftime("%Y-%m-%d")
+        #startdate = startdate.strftime("%Y-%m-%d")
+        choose_stocks(context, bar_dict)
+        #print(pb_ratio_df)
+        #context.Stocks = context.Stocks[0:50]
+        #update_universe(context.Stocks)
+
+
+# 你选择的证券的数据更新将会触发此段逻辑，例如日或分钟历史数据切片或者是实时数据切片更新
+def handle_bar(context, bar_dict):
+    # 开始编写你的主要的算法逻辑
+
+    # bar_dict[order_book_id] 可以拿到某个证券的bar信息
+    # context.portfolio 可以拿到现在的投资组合状态信息
+
+    # 使用order_shares(id_or_ins, amount)方法进行落单
+
+    # TODO: 开始编写你的算法吧！
+    if context.Traded == 1:
+        stoploss(context,bar_dict)
+    if context.countdate%context.holdingperiod == 1:
+        context.average_percent = 0.99/len(context.stocks)
+        print(context.stocks[0:5])
+        for stock in context.stocks:
+            order_target_percent(stock, context.average_percent)
+        context.Traded = 1    
+
